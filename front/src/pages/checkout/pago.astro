@@ -1,0 +1,116 @@
+---
+export const prerender = false;
+import MainLayout from '../../layouts/MainLayout.astro';
+---
+
+<MainLayout title="Selecciona cómo pagar - RegalosApp">
+  <div class="max-w-4xl mx-auto space-y-6">
+    <div class="flex justify-between items-center text-xs font-semibold text-stone-400 bg-stone-100 p-3 rounded-xl">
+      <span>1. Carrito</span>
+      <span>2. Verificación</span>
+      <span class="bg-stone-800 text-white px-3 py-1 rounded-lg">3. Pago</span>
+      <span>4. Seguimiento</span>
+    </div>
+
+    <div class="bg-stone-100 p-4 rounded-xl border border-stone-200 text-sm text-stone-700">
+      <p class="font-bold">Compra asociada a</p>
+      <p id="userEmail">Cargando...</p>
+    </div>
+
+    <div>
+      <p id="orderBadge" class="text-xs font-extrabold text-amber-700 mb-1">Pedido #-- • Pendiente de pago</p>
+      <h1 class="text-2xl font-bold text-stone-900">Selecciona cómo pagar</h1>
+      <p class="text-xs text-stone-500 mt-1">El pedido ya quedó registrado para seguimiento. El stock se descuenta únicamente cuando el pago es aprobado.</p>
+    </div>
+
+    <div class="bg-sky-50 border border-sky-200 p-4 rounded-xl text-xs text-sky-800">
+      <p class="font-bold">Pago seguro con el proveedor seleccionado</p>
+      <p>Serás redirigido a Mercado Pago o PayPal para completar el pago. La tienda confirma el resultado directamente con el proveedor.</p>
+    </div>
+
+    <p id="mensajePago" class="hidden bg-rose-50 border border-rose-200 text-rose-700 text-sm font-semibold p-3 rounded-xl"></p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <button id="payMercadoPago" class="border-2 border-sky-400 hover:border-sky-600 bg-white p-5 rounded-2xl text-left shadow-sm transition-all flex flex-col justify-between h-28">
+        <div>
+          <span class="font-extrabold text-stone-900 text-lg block">Mercado Pago</span>
+          <span class="text-xs text-stone-400">Pagar <span class="orderAmount">$0.00</span> MXN</span>
+        </div>
+      </button>
+
+      <button id="payPayPal" class="border-2 border-stone-800 hover:border-black bg-white p-5 rounded-2xl text-left shadow-sm transition-all flex flex-col justify-between h-28">
+        <div>
+          <span class="font-extrabold text-stone-900 text-lg block">PayPal</span>
+          <span class="text-xs text-stone-400">Pagar <span class="orderAmount">$0.00</span> MXN</span>
+        </div>
+      </button>
+    </div>
+
+    <div class="pt-4">
+      <button id="cancelOrder" class="text-xs text-rose-700 underline font-semibold hover:text-rose-900">
+        Cancelar pedido pendiente
+      </button>
+    </div>
+  </div>
+
+  <script>
+    import { consultarApi, obtenerToken, obtenerUsuario, redirigirALogin } from '../../lib/api';
+
+    const usuario = obtenerUsuario();
+    const pedido = JSON.parse(localStorage.getItem('pendingOrder') || '{}');
+
+    if (!obtenerToken() || !usuario) {
+      redirigirALogin();
+    } else if (!pedido.id) {
+      window.location.href = '/carrito';
+    } else {
+      document.getElementById('userEmail')!.textContent = `${usuario.nombre} (${usuario.email})`;
+      document.getElementById('orderBadge')!.textContent = `Pedido #${pedido.id} • Pendiente de pago`;
+      document.querySelectorAll('.orderAmount').forEach((el) => {
+        el.textContent = `$${Number(pedido.total).toFixed(2)}`;
+      });
+
+      const aviso = document.getElementById('mensajePago')!;
+      const botones = document.querySelectorAll<HTMLButtonElement>('#payMercadoPago, #payPayPal, #cancelOrder');
+      const bloquear = (valor: boolean) => botones.forEach((b) => (b.disabled = valor));
+
+      async function pagar(proveedor: string) {
+        bloquear(true);
+        aviso.classList.add('hidden');
+        try {
+          const datos = await consultarApi(
+            `mutation IniciarPago($pedidoId: ID!, $proveedor: ProveedorPago!) {
+              iniciarPagoExterno(pedidoId: $pedidoId, proveedor: $proveedor) { url }
+            }`,
+            { pedidoId: String(pedido.id), proveedor }
+          );
+          window.location.href = datos.iniciarPagoExterno.url;
+        } catch (err) {
+          aviso.textContent = (err as Error).message;
+          aviso.classList.remove('hidden');
+          bloquear(false);
+        }
+      }
+
+      document.getElementById('payMercadoPago')?.addEventListener('click', () => pagar('MERCADO_PAGO'));
+      document.getElementById('payPayPal')?.addEventListener('click', () => pagar('PAYPAL'));
+
+      document.getElementById('cancelOrder')?.addEventListener('click', async () => {
+        if (!confirm('¿Seguro que deseas cancelar este pedido?')) return;
+        bloquear(true);
+        try {
+          await consultarApi(
+            `mutation Cancelar($pedidoId: ID!) { cancelarPedido(pedidoId: $pedidoId) { id } }`,
+            { pedidoId: String(pedido.id) }
+          );
+          localStorage.removeItem('pendingOrder');
+          window.location.href = '/carrito';
+        } catch (err) {
+          aviso.textContent = (err as Error).message;
+          aviso.classList.remove('hidden');
+          bloquear(false);
+        }
+      });
+    }
+  </script>
+</MainLayout>

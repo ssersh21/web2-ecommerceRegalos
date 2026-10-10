@@ -1,0 +1,145 @@
+---
+export const prerender = false;
+import MainLayout from '../../layouts/MainLayout.astro';
+---
+
+<MainLayout title="Verifica antes de pagar - RegalosApp">
+  <div class="max-w-4xl mx-auto space-y-6">
+    <div class="bg-stone-100 p-4 rounded-xl border border-stone-200 text-sm text-stone-700">
+      <p class="font-bold">Compra asociada a</p>
+      <p id="userEmail">Cargando...</p>
+    </div>
+
+    <div>
+      <h1 class="text-2xl font-bold text-stone-900">Verifica antes de pagar</h1>
+      <p class="text-xs text-stone-500 mt-1">Confirma productos, cantidades y datos de entrega. Al continuar se crea un pedido pendiente de pago.</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200 space-y-4">
+        <h2 class="font-bold text-stone-900 text-lg border-b border-stone-100 pb-2">Productos</h2>
+        <div id="productList" class="space-y-3 text-sm"></div>
+        <div class="flex justify-between font-extrabold text-base border-t border-stone-100 pt-3">
+          <span>Total</span>
+          <span id="totalPrice" class="text-stone-900">$0.00</span>
+        </div>
+      </div>
+
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200 space-y-3 text-sm">
+        <h2 class="font-bold text-stone-900 text-lg border-b border-stone-100 pb-2">Entrega</h2>
+        <div>
+          <p class="text-xs font-bold text-stone-400 uppercase">Destinatario</p>
+          <p id="destName" class="font-semibold text-stone-800"></p>
+        </div>
+        <div>
+          <p class="text-xs font-bold text-stone-400 uppercase">Teléfono</p>
+          <p id="destPhone" class="text-stone-700"></p>
+        </div>
+        <div>
+          <p class="text-xs font-bold text-stone-400 uppercase">Dirección</p>
+          <p id="destAddress" class="text-stone-700"></p>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <p class="text-xs font-bold text-stone-400 uppercase">Fecha</p>
+            <p id="destDate" class="text-stone-700"></p>
+          </div>
+          <div>
+            <p class="text-xs font-bold text-stone-400 uppercase">Horario</p>
+            <p id="destTime" class="text-stone-700"></p>
+          </div>
+        </div>
+        <div>
+          <p class="text-xs font-bold text-stone-400 uppercase">Tarjeta</p>
+          <p id="destMsg" class="text-stone-700"></p>
+        </div>
+      </div>
+    </div>
+
+    <p id="errorConfirmacion" class="hidden bg-rose-50 border border-rose-200 text-rose-700 text-sm font-semibold p-3 rounded-xl"></p>
+
+    <div class="flex justify-end gap-4 pt-4">
+      <a href="/checkout/entrega" class="bg-stone-100 text-stone-800 font-bold px-6 py-3 rounded-xl border border-stone-300 hover:bg-stone-200 text-sm transition-colors">
+        Editar información
+      </a>
+      <button id="confirmBtn" class="bg-stone-800 text-white font-bold px-6 py-3 rounded-xl hover:bg-stone-900 text-sm transition-colors">
+        Confirmar y continuar al pago
+      </button>
+    </div>
+  </div>
+
+  <script>
+    import { consultarApi, escaparHtml, obtenerToken, obtenerUsuario, redirigirALogin } from '../../lib/api';
+
+    const usuario = obtenerUsuario();
+    const carrito = JSON.parse(localStorage.getItem('cart') || '[]');
+    const entrega = JSON.parse(localStorage.getItem('deliveryData') || '{}');
+
+    if (!obtenerToken() || !usuario) {
+      redirigirALogin();
+    } else if (carrito.length === 0) {
+      window.location.href = '/carrito';
+    } else if (!entrega.destinatario) {
+      window.location.href = '/checkout/entrega';
+    } else {
+      const texto = (id: string, valor: string) => {
+        document.getElementById(id)!.textContent = valor;
+      };
+
+      texto('userEmail', `${usuario.nombre} (${usuario.email})`);
+
+      let total = 0;
+      document.getElementById('productList')!.innerHTML = carrito.map((item: any) => {
+        const subtotal = item.precio * item.cantidad;
+        total += subtotal;
+        return `<div class="flex justify-between items-center">
+          <span>${item.cantidad} × ${escaparHtml(item.nombre)}</span>
+          <span class="font-bold">$${subtotal.toFixed(2)}</span>
+        </div>`;
+      }).join('');
+
+      texto('totalPrice', `$${total.toFixed(2)}`);
+      texto('destName', entrega.destinatario || '-');
+      texto('destPhone', entrega.telefono || '-');
+      texto('destAddress', entrega.direccion || '-');
+      texto('destDate', entrega.fecha || '-');
+      texto('destTime', entrega.horario || '-');
+      texto('destMsg', entrega.mensaje || 'Sin mensaje');
+
+      const boton = document.getElementById('confirmBtn') as HTMLButtonElement;
+      const aviso = document.getElementById('errorConfirmacion')!;
+
+      boton.addEventListener('click', async () => {
+        boton.disabled = true;
+        aviso.classList.add('hidden');
+        try {
+          const datos = await consultarApi(
+            `mutation CrearPedido($detalles: [DetalleInput!]!, $entrega: EntregaInput!) {
+              crearPedido(detalles: $detalles, entrega: $entrega) { id total }
+            }`,
+            {
+              detalles: carrito.map((item: any) => ({
+                productoId: String(item.id),
+                cantidad: item.cantidad,
+              })),
+              entrega: {
+                destinatario: entrega.destinatario,
+                telefono: entrega.telefono,
+                direccion: entrega.direccion,
+                fechaEntrega: entrega.fecha,
+                horarioEntrega: entrega.horario,
+                mensajeTarjeta: entrega.mensaje || null,
+              },
+            }
+          );
+          localStorage.setItem('pendingOrder', JSON.stringify(datos.crearPedido));
+          window.location.href = '/checkout/pago';
+        } catch (err) {
+          aviso.textContent = (err as Error).message;
+          aviso.classList.remove('hidden');
+          boton.disabled = false;
+        }
+      });
+    }
+  </script>
+</MainLayout>

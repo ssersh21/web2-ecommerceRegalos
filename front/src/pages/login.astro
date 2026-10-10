@@ -1,0 +1,110 @@
+---
+import '../styles/global.css';
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Iniciar Sesión - E-Commerce</title>
+  </head>
+  <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white p-8 rounded-2xl shadow-md w-full max-w-md">
+      <h2 class="text-2xl font-bold text-center text-gray-800 mb-6">Iniciar Sesión</h2>
+      
+      <form id="loginForm" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Correo Electrónico</label>
+          <input 
+            type="email" 
+            id="email" 
+            required 
+            class="mt-1 w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+            placeholder="tu@email.com"
+          />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Contraseña</label>
+          <input 
+            type="password" 
+            id="password" 
+            required 
+            class="mt-1 w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+            placeholder="••••••••"
+          />
+        </div>
+
+        <div id="errorMsg" class="text-red-500 text-sm hidden"></div>
+
+        <button 
+          type="submit" 
+          class="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition-colors"
+        >
+          Entrar
+        </button>
+      </form>
+
+      <p class="text-center text-sm text-gray-600 mt-4">
+        ¿No tienes cuenta? <a href="/registro" id="enlaceAlterno" class="text-indigo-600 font-semibold hover:underline">Regístrate aquí</a>
+      </p>
+    </div>
+
+    <script>
+      const enlaceAlterno = document.getElementById('enlaceAlterno') as HTMLAnchorElement | null;
+      if (enlaceAlterno) enlaceAlterno.search = window.location.search;
+
+      const form = document.getElementById('loginForm') as HTMLFormElement;
+      const errorMsg = document.getElementById('errorMsg') as HTMLDivElement;
+
+      form?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorMsg.classList.add('hidden');
+
+        const email = (document.getElementById('email') as HTMLInputElement).value;
+        const password = (document.getElementById('password') as HTMLInputElement).value;
+
+        try {
+          const res = await fetch(import.meta.env.PUBLIC_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: `
+                mutation LoginUsuario($email: String!, $password: String!) {
+                  login(email: $email, password: $password) {
+                    token
+                    usuario {
+                      id
+                      nombre
+                      email
+                      rol
+                    }
+                  }
+                }
+              `,
+              variables: { email, password }
+            })
+          });
+
+          const result = await res.json();
+
+          if (result.errors) {
+            errorMsg.textContent = result.errors[0].message.replace(/^[A-Z_]+:\s*/, '');
+            errorMsg.classList.remove('hidden');
+          } else if (result.data?.login) {
+            // Guardamos token y usuario en localStorage
+            localStorage.setItem('token', result.data.login.token);
+            localStorage.setItem('usuario', JSON.stringify(result.data.login.usuario));
+            
+            const siguiente = new URLSearchParams(window.location.search).get('next');
+            const destino = siguiente && siguiente.startsWith('/') && !siguiente.startsWith('//') ? siguiente : '/';
+            window.location.href = destino;
+          }
+        } catch (err) {
+          errorMsg.textContent = 'Ocurrió un error al conectar con el servidor.';
+          errorMsg.classList.remove('hidden');
+        }
+      });
+    </script>
+  </body>
+</html>

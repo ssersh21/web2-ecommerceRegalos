@@ -1,0 +1,161 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+}
+
+const { title = "Tienda de Regalos" } = Astro.props;
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+  </head>
+  <body class="bg-gray-50 min-h-screen flex flex-col font-sans text-gray-800">
+    <!-- TOPBAR / NAVBAR -->
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+        
+        <div class="flex items-center gap-3">
+          <a href="/" class="text-2xl font-black text-indigo-600 tracking-tight">
+            🎁 RegalosApp
+          </a>
+        </div>
+
+        <!-- Buscador -->
+        <div class="hidden sm:flex flex-1 max-w-md mx-4">
+          <div class="relative w-full">
+            <input 
+              type="text" 
+              id="searchInput"
+              placeholder="Buscar ramos, peluches, globos..." 
+              class="w-full bg-gray-100 pl-10 pr-4 py-2 rounded-xl text-sm border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+            />
+            <svg class="w-4 h-4 text-gray-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+          </div>
+        </div>
+
+        <!-- Acciones del Usuario & Carrito -->
+        <div class="flex items-center space-x-4">
+          <div id="authContainer" class="flex items-center space-x-3">
+            <a href="/login" class="text-sm font-medium text-gray-600 hover:text-indigo-600 transition-colors">
+              Iniciar Sesión
+            </a>
+            <a href="/registro" class="bg-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-xl shadow hover:bg-indigo-700 transition-all">
+              Registrarse
+            </a>
+          </div>
+
+          <!-- Carrito de Compras -->
+          <a href="/carrito" class="relative p-2 text-gray-600 hover:text-indigo-600 transition-colors">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+            <span id="cartCount" class="absolute top-0 right-0 bg-rose-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center border-2 border-white">0</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <div class="flex-1 max-w-7xl w-full mx-auto flex">
+      <!-- SIDEBAR -->
+      <aside class="w-64 bg-white border-r border-gray-200 hidden md:block p-6 flex-shrink-0">
+        <nav class="space-y-6">
+          <div>
+            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Navegación</h3>
+            <ul class="space-y-2">
+              <li>
+                <a href="/" class="flex items-center gap-3 px-3 py-2 text-sm font-semibold text-indigo-600 bg-indigo-50 rounded-xl">
+                  🏠 Inicio / Catálogo
+                </a>
+              </li>
+              <li>
+                <a href="/" class="flex items-center gap-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-indigo-600 rounded-xl transition-colors">
+                  🔥 Más Vendidos
+                </a>
+              </li>
+              <li>
+                <a href="/" class="flex items-center gap-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-indigo-600 rounded-xl transition-colors">
+                  ✨ Ofertas Especiales
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Mi Cuenta</h3>
+            <ul class="space-y-2">
+              <li>
+                <a href="/pedidos" class="flex items-center gap-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-indigo-600 rounded-xl transition-colors">
+                  🔑 Mis Pedidos
+                </a>
+              </li>
+              <li id="adminDashboardLink" class="hidden">
+                <a href="/admin" class="flex items-center gap-3 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-indigo-600 rounded-xl transition-colors">
+                  📊 Administración
+                </a>
+              </li>
+            </ul>
+          </div>
+        </nav>
+      </aside>
+
+      <!-- CONTENIDO -->
+      <main class="flex-1 p-6">
+        <slot />
+      </main>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="bg-white border-t border-gray-200 mt-auto py-8">
+      <div class="max-w-7xl mx-auto px-4 text-center sm:flex sm:justify-between sm:text-left text-sm text-gray-500">
+        <p>© 2026 RegalosApp. Todos los derechos reservados.</p>
+      </div>
+    </footer>
+
+    <script>
+      // Actualizar contador del carrito
+      function updateCartCount() {
+        const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+        const totalItems = cart.reduce((acc: number, item: any) => acc + item.cantidad, 0);
+        const countBadge = document.getElementById('cartCount');
+        if (countBadge) countBadge.textContent = totalItems.toString();
+      }
+
+      // Renderizar estado de autenticación
+      function checkAuth() {
+        let user = null;
+        try {
+          user = JSON.parse(localStorage.getItem('usuario') || 'null');
+        } catch {}
+        const authContainer = document.getElementById('authContainer');
+        if (!user || !authContainer) return;
+        if (user.rol === 'ADMIN') {
+          document.getElementById('adminDashboardLink')?.classList.remove('hidden');
+        }
+
+        const saludo = document.createElement('span');
+        saludo.className = 'text-sm font-semibold text-gray-700';
+        saludo.textContent = `Hola, ${String(user.nombre || '').split(' ')[0]}`;
+
+        const salir = document.createElement('button');
+        salir.className = 'text-xs text-rose-600 font-medium hover:underline';
+        salir.textContent = 'Salir';
+        salir.addEventListener('click', () => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('usuario');
+          window.location.href = '/';
+        });
+
+        authContainer.replaceChildren(saludo, salir);
+      }
+
+      updateCartCount();
+      checkAuth();
+
+      // Escuchar eventos globales de actualización de carrito
+      window.addEventListener('cart-updated', updateCartCount);
+    </script>
+  </body>
+</html>

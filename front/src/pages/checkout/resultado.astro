@@ -1,0 +1,69 @@
+---
+export const prerender = false;
+import MainLayout from '../../layouts/MainLayout.astro';
+---
+
+<MainLayout title="Confirmación del pago - RegalosApp">
+  <div class="mx-auto max-w-xl rounded-2xl border border-stone-200 bg-white p-8 text-center shadow-sm">
+    <div id="paymentProgress">
+      <h1 class="text-2xl font-bold text-stone-900">Verificando tu pago</h1>
+      <p class="mt-2 text-sm text-stone-600">Estamos confirmando la transacción directamente con el proveedor.</p>
+    </div>
+    <div id="paymentFailure" class="hidden">
+      <h1 class="text-2xl font-bold text-rose-700">No se pudo confirmar el pago</h1>
+      <p id="paymentError" class="mt-2 text-sm text-stone-600"></p>
+      <a href="/checkout/pago" class="mt-6 inline-block rounded-xl bg-indigo-900 px-6 py-3 text-sm font-bold text-white hover:bg-indigo-950">
+        Volver a intentar
+      </a>
+    </div>
+    <div id="paymentSuccess" class="hidden">
+      <h1 class="text-2xl font-bold text-emerald-700">¡Pago confirmado!</h1>
+      <p class="mt-2 text-sm text-stone-600">Tu pedido ya está registrado y comenzaremos a prepararlo.</p>
+      <a href="/pedidos" class="mt-6 inline-block rounded-xl bg-indigo-900 px-6 py-3 text-sm font-bold text-white hover:bg-indigo-950">
+        Ver mis pedidos
+      </a>
+    </div>
+  </div>
+
+  <script>
+    import { consultarApi, obtenerToken, redirigirALogin } from '../../lib/api';
+
+    if (!obtenerToken()) {
+      redirigirALogin();
+    } else {
+      const params = new URLSearchParams(window.location.search);
+      const proveedor = params.get('proveedor');
+      const pedidoId = params.get('pedidoId') || JSON.parse(localStorage.getItem('pendingOrder') || '{}').id;
+      const referencia = proveedor === 'PAYPAL'
+        ? params.get('token')
+        : params.get('payment_id') || params.get('collection_id');
+
+      const mostrarError = (mensaje: string) => {
+        document.getElementById('paymentProgress')!.classList.add('hidden');
+        document.getElementById('paymentError')!.textContent = mensaje;
+        document.getElementById('paymentFailure')!.classList.remove('hidden');
+      };
+
+      if (!pedidoId || !referencia || !['PAYPAL', 'MERCADO_PAGO'].includes(proveedor || '')) {
+        mostrarError('No encontramos los datos necesarios para validar la transacción. Puedes volver a seleccionar el método de pago.');
+      } else {
+        consultarApi(
+          `mutation ConfirmarPago($pedidoId: ID!, $proveedor: ProveedorPago!, $referencia: String!) {
+            confirmarPagoExterno(pedidoId: $pedidoId, proveedor: $proveedor, referencia: $referencia) { id status }
+          }`,
+          { pedidoId: String(pedidoId), proveedor, referencia }
+        ).then((data) => {
+          if (!['PAGADO', 'EN_PREPARACION', 'LISTO', 'ENVIADO', 'ENTREGADO'].includes(data.confirmarPagoExterno.status)) {
+            throw new Error('El proveedor todavía no reporta el pago como aprobado.');
+          }
+          localStorage.removeItem('pendingOrder');
+          localStorage.removeItem('cart');
+          localStorage.removeItem('deliveryData');
+          window.dispatchEvent(new Event('cart-updated'));
+          document.getElementById('paymentProgress')!.classList.add('hidden');
+          document.getElementById('paymentSuccess')!.classList.remove('hidden');
+        }).catch((error) => mostrarError((error as Error).message));
+      }
+    }
+  </script>
+</MainLayout>

@@ -1,0 +1,11 @@
+{
+  "name": "pp1astro",
+  "private": true,
+  "scripts": {
+    "install:todo": "npm --prefix front install && npm --prefix back install",
+    "dev:front": "npm --prefix front run dev",
+    "dev:back": "npm --prefix back run dev",
+    "seed": "npm --prefix back run seed",
+    "db:up": "docker compose up -d"
+  }
+}

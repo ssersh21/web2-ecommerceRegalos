@@ -1,0 +1,246 @@
+---
+export const prerender = false;
+import MainLayout from '../layouts/MainLayout.astro';
+---
+
+<MainLayout title="Administración - RegalosApp">
+  <div class="mx-auto max-w-7xl space-y-6">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-wider text-indigo-600">Panel de control</p>
+        <h1 class="mt-1 text-3xl font-extrabold text-stone-900">Dashboard de administración</h1>
+        <p class="mt-1 text-sm text-stone-500">Resumen de ventas, inventario y pedidos de la tienda.</p>
+      </div>
+      <button id="refreshDashboard" class="rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-bold text-stone-700 hover:bg-stone-50">Actualizar datos</button>
+    </div>
+
+    <p id="dashboardMessage" role="status" class="hidden rounded-xl border p-3 text-sm font-semibold"></p>
+
+    <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores de la tienda">
+      <article class="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+        <p class="text-sm font-semibold text-stone-500">Ingresos · últimos 30 días</p>
+        <p id="revenueMetric" class="mt-2 text-3xl font-extrabold text-stone-900">—</p>
+        <p class="mt-1 text-xs text-stone-400">Pedidos con pago confirmado</p>
+      </article>
+      <article class="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+        <p class="text-sm font-semibold text-stone-500">Pedidos · últimos 30 días</p>
+        <p id="ordersMetric" class="mt-2 text-3xl font-extrabold text-stone-900">—</p>
+        <p class="mt-1 text-xs text-stone-400">Ventas pagadas</p>
+      </article>
+      <article class="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+        <p class="text-sm font-semibold text-amber-800">Pedidos pendientes de pago</p>
+        <p id="pendingMetric" class="mt-2 text-3xl font-extrabold text-amber-950">—</p>
+        <p class="mt-1 text-xs text-amber-700">Incluye intentos de pago fallidos</p>
+      </article>
+      <article class="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+        <p class="text-sm font-semibold text-stone-500">Productos en catálogo</p>
+        <p id="productsMetric" class="mt-2 text-3xl font-extrabold text-stone-900">—</p>
+        <p class="mt-1 text-xs text-stone-400">Con inventario actualizado</p>
+      </article>
+    </section>
+
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-5">
+      <section class="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm xl:col-span-3">
+        <div class="mb-5">
+          <h2 class="text-lg font-bold text-stone-900">Productos más vendidos</h2>
+          <p class="text-xs text-stone-500">Unidades vendidas en pedidos pagados</p>
+        </div>
+        <div id="bestSellers" class="space-y-5"></div>
+      </section>
+
+      <section class="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm xl:col-span-2">
+        <div class="mb-5">
+          <h2 class="text-lg font-bold text-stone-900">Inventario bajo</h2>
+          <p class="text-xs text-stone-500">Productos con 5 unidades o menos. Puedes ajustar el stock aquí.</p>
+        </div>
+        <div id="lowStock" class="space-y-3"></div>
+      </section>
+    </div>
+
+    <section class="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+      <div class="border-b border-stone-100 p-6">
+        <h2 class="text-lg font-bold text-stone-900">Pedidos recientes</h2>
+        <p class="text-xs text-stone-500">Avanza cada pedido pagado a su siguiente etapa de preparación y entrega.</p>
+      </div>
+      <div id="recentOrders" class="divide-y divide-stone-100"></div>
+    </section>
+  </div>
+
+  <script>
+    import { consultarApi, escaparHtml, obtenerToken, obtenerUsuario, redirigirALogin } from '../lib/api';
+
+    const usuario = obtenerUsuario();
+    const aviso = document.getElementById('dashboardMessage')!;
+    const formatoMoneda = (valor: number) => new Intl.NumberFormat('es-MX', {
+      style: 'currency',
+      currency: 'MXN',
+    }).format(valor);
+    const etiquetaEstado: Record<string, string> = {
+      PENDIENTE_PAGO: 'Pendiente de pago',
+      PAGO_FALLIDO: 'Pago fallido',
+      PAGADO: 'Pagado',
+      EN_PREPARACION: 'En preparación',
+      LISTO: 'Listo para entrega',
+      ENVIADO: 'Enviado',
+      ENTREGADO: 'Entregado',
+      CANCELADO: 'Cancelado',
+    };
+    const siguienteEstado: Record<string, string> = {
+      PAGADO: 'EN_PREPARACION',
+      EN_PREPARACION: 'LISTO',
+      LISTO: 'ENVIADO',
+      ENVIADO: 'ENTREGADO',
+    };
+
+    function mostrarMensaje(texto: string, error = false) {
+      aviso.textContent = texto;
+      aviso.className = `rounded-xl border p-3 text-sm font-semibold ${
+        error ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+      }`;
+    }
+
+    function dibujarDashboard(dashboard: any) {
+      document.getElementById('revenueMetric')!.textContent = formatoMoneda(Number(dashboard.ingresosMes));
+      document.getElementById('ordersMetric')!.textContent = String(dashboard.pedidosMes);
+      document.getElementById('pendingMetric')!.textContent = String(dashboard.pedidosPendientes);
+      document.getElementById('productsMetric')!.textContent = String(dashboard.totalProductos);
+
+      const masVendidos = dashboard.masVendidos || [];
+      const maximo = Math.max(1, ...masVendidos.map((producto: any) => Number(producto.cantidad)));
+      document.getElementById('bestSellers')!.innerHTML = masVendidos.length
+        ? masVendidos.map((producto: any) => {
+          const porcentaje = Math.max(4, Math.round(Number(producto.cantidad) / maximo * 100));
+          return `<div>
+            <div class="mb-1 flex items-center justify-between gap-4 text-sm">
+              <span class="truncate font-semibold text-stone-800">${escaparHtml(producto.nombre)}</span>
+              <span class="shrink-0 font-bold text-stone-700">${Number(producto.cantidad)} u.</span>
+            </div>
+            <div class="h-3 overflow-hidden rounded-full bg-stone-100">
+              <div class="h-full rounded-full bg-indigo-600" style="width:${porcentaje}%"></div>
+            </div>
+            <p class="mt-1 text-right text-xs text-stone-400">${formatoMoneda(Number(producto.ingresos))} vendidos</p>
+          </div>`;
+        }).join('')
+        : '<p class="text-sm text-stone-500">Aún no hay ventas confirmadas.</p>';
+
+      const inventario = dashboard.productosBajoStock || [];
+      document.getElementById('lowStock')!.innerHTML = inventario.length
+        ? inventario.map((producto: any) => `<form class="stock-form flex flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-200 p-3" data-id="${escaparHtml(producto.id)}">
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-bold text-stone-800">${escaparHtml(producto.nombre)}</p>
+              <p class="text-xs ${Number(producto.stock) === 0 ? 'font-bold text-rose-600' : 'text-amber-700'}">${Number(producto.stock)} disponibles</p>
+            </div>
+            <label class="flex items-center gap-2 text-xs font-semibold text-stone-500">
+              Stock
+              <input name="stock" type="number" min="0" step="1" value="${Number(producto.stock)}" class="w-20 rounded-lg border border-stone-300 px-2 py-1.5 text-sm text-stone-900" required />
+            </label>
+            <button class="rounded-lg bg-stone-800 px-3 py-2 text-xs font-bold text-white hover:bg-stone-900">Guardar</button>
+          </form>`).join('')
+        : '<p class="rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">No hay productos con inventario bajo.</p>';
+
+      const pedidos = dashboard.pedidosRecientes || [];
+      document.getElementById('recentOrders')!.innerHTML = pedidos.length
+        ? pedidos.map((pedido: any) => {
+          const siguiente = siguienteEstado[pedido.status];
+          const cliente = pedido.usuario?.nombre || pedido.destinatario;
+          const articulos = (pedido.detalles || []).map((detalle: any) =>
+            `${Number(detalle.cantidad)} × ${escaparHtml(detalle.producto.nombre)}`
+          ).join(', ');
+          return `<article class="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="font-bold text-stone-900">Pedido #${escaparHtml(pedido.id)}</span>
+                <span class="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-bold text-stone-700">${escaparHtml(etiquetaEstado[pedido.status] || pedido.status)}</span>
+              </div>
+              <p class="mt-1 text-sm text-stone-600">${escaparHtml(cliente)} · ${formatoMoneda(Number(pedido.total))}</p>
+              <p class="mt-1 truncate text-xs text-stone-400">${articulos || 'Sin artículos'}</p>
+            </div>
+            ${siguiente ? `<button class="advance-order rounded-xl bg-indigo-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-800" data-id="${escaparHtml(pedido.id)}" data-status="${siguiente}">Marcar: ${etiquetaEstado[siguiente]}</button>` : ''}
+          </article>`;
+        }).join('')
+        : '<p class="p-6 text-sm text-stone-500">Todavía no hay pedidos.</p>';
+
+      document.querySelectorAll<HTMLFormElement>('.stock-form').forEach((form) => {
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const stock = Number(new FormData(form).get('stock'));
+          const id = form.dataset.id;
+          if (!id || !Number.isInteger(stock) || stock < 0) return;
+          const button = form.querySelector<HTMLButtonElement>('button')!;
+          button.disabled = true;
+          try {
+            await consultarApi(
+              `mutation ActualizarStock($id: ID!, $stock: Int!) {
+                actualizarProducto(id: $id, input: { stock: $stock }) { id }
+              }`,
+              { id, stock }
+            );
+            await cargarDashboard();
+            mostrarMensaje('Inventario actualizado.');
+          } catch (error) {
+            mostrarMensaje((error as Error).message, true);
+            button.disabled = false;
+          }
+        });
+      });
+
+      document.querySelectorAll<HTMLButtonElement>('.advance-order').forEach((button) => {
+        button.addEventListener('click', async () => {
+          button.disabled = true;
+          try {
+            await consultarApi(
+              `mutation ActualizarPedido($pedidoId: ID!, $status: EstadoPedido!) {
+                actualizarEstadoPedido(pedidoId: $pedidoId, status: $status) { id }
+              }`,
+              { pedidoId: button.dataset.id, status: button.dataset.status }
+            );
+            await cargarDashboard();
+            mostrarMensaje('El estado del pedido se actualizó.');
+          } catch (error) {
+            mostrarMensaje((error as Error).message, true);
+            button.disabled = false;
+          }
+        });
+      });
+    }
+
+    async function cargarDashboard() {
+      const datos = await consultarApi(`
+        query DashboardAdmin {
+          adminDashboard {
+            ingresosMes pedidosMes pedidosPendientes totalProductos
+            masVendidos { id nombre cantidad ingresos }
+            productosBajoStock { id nombre stock }
+            pedidosRecientes {
+              id fecha total status destinatario
+              usuario { nombre email }
+              detalles { cantidad producto { nombre } }
+            }
+          }
+        }
+      `);
+      dibujarDashboard(datos.adminDashboard);
+    }
+
+    if (!obtenerToken() || !usuario) {
+      redirigirALogin();
+    } else if (usuario.rol !== 'ADMIN') {
+      mostrarMensaje('Esta sección es exclusiva para administradores.', true);
+    } else {
+      const refrescar = document.getElementById('refreshDashboard') as HTMLButtonElement;
+      const refrescarDashboard = async () => {
+        refrescar.disabled = true;
+        aviso.classList.add('hidden');
+        try {
+          await cargarDashboard();
+        } catch (error) {
+          mostrarMensaje((error as Error).message, true);
+        } finally {
+          refrescar.disabled = false;
+        }
+      };
+      refrescar.addEventListener('click', refrescarDashboard);
+      refrescarDashboard();
+    }
+  </script>
+</MainLayout>
