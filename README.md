@@ -1,6 +1,6 @@
 # web2-ecommerceRegalos
 
-E-commerce de regalos y detalles para ocasiones especiales.
+E-commerce de regalos o detalles para ocasiones especiales.
 
 - `front/`: Astro (paginas .astro, layout, estilos). Puerto 4321.
 - `back/`: servidor GraphQL (Apollo + PostgreSQL). Puerto 4000, ruta `/graphql`. Imagenes locales en `back/img/`, servidas mediante `/img/<archivo>`.
