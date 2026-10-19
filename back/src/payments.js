@@ -1,4 +1,5 @@
 const FRONT_URL = (process.env.FRONT_URL || 'http://localhost:4321').replace(/\/+$/, '');
+const FRONT_ES_HTTPS = FRONT_URL.startsWith('https://');
 
 function paypalApiUrl() {
   const environment = process.env.PAYPAL_ENVIRONMENT || 'sandbox';
@@ -68,7 +69,7 @@ export async function crearPreferenciaMercadoPago(pedido) {
           pending: resultado,
           failure: resultado,
         },
-        auto_return: 'approved',
+        ...(FRONT_ES_HTTPS ? { auto_return: 'approved' } : {}),
       }),
     },
     'Mercado Pago'

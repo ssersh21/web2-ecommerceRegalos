@@ -32,6 +32,10 @@ psql -U postgres -c "CREATE DATABASE tienda OWNER tienda;"
 El front lee la URL de la API desde `front/.env` (`PUBLIC_API_URL`).
 El back lee `back/.env` (`DATABASE_URL`, `PORT`, `FRONT_URL`, `AUTH_SECRET`).
 
+## Interactividad del catálogo
+
+El catálogo se renderiza en el servidor y usa una isla React (`CatalogoInteractivo`) con `client:load` para hidratar filtros por categoría, búsqueda y controles del carrito. La integración está configurada con `@astrojs/react`; las páginas sin esta interacción no cargan esa isla.
+
 ## Pagos y administración
 
 Los botones de checkout usan Mercado Pago Checkout Pro y PayPal Checkout Orders. Para probarlos en sandbox, agrega las credenciales de prueba a `back/.env`:
@@ -43,9 +47,5 @@ PAYPAL_CLIENT_ID=tu_client_id_de_sandbox
 PAYPAL_CLIENT_SECRET=tu_client_secret_de_sandbox
 PAYPAL_ENVIRONMENT=sandbox
 ```
-
-Para cobros reales, configura el access token de producción de Mercado Pago y establece `MERCADO_PAGO_ENVIRONMENT=live`; configura también las credenciales live de PayPal y `PAYPAL_ENVIRONMENT=live`. No pongas estas credenciales en `front/.env` ni las compartas en el repositorio. El proveedor confirma cada transacción en el servidor antes de marcar el pedido como pagado.
-
-El usuario demo `admin@demo.com` puede iniciar sesión para acceder a `/admin`. El dashboard presenta ventas de los últimos 30 días, pedidos pendientes, productos más vendidos, alertas de inventario y pedidos recientes; también permite ajustar stock y avanzar el estado logístico de pedidos ya pagados.
 
 Usuarios demo: `cliente@demo.com` / `demo1234` y `admin@demo.com` / `admin1234`.
